@@ -37,7 +37,7 @@ def get_compressed_path(output_dir: Path, base_precision, option: str):
         model_id = out_d.parents[3].name
         option = is_int4_default_compression(model_id)["mode"]
         op = option.split(".")[-1]
-    return out_d / "pytorch/dldt/compressed_weights" / f"OV_{base_precision}-{str(op)}"
+    return out_d / "pytorch/dldt/compressed_weights" / f"OV_{base_precision}-{op.upper()}"
 
 
 INT4_MODEL_CONFIGURATION = {
