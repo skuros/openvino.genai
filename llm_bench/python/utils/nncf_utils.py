@@ -31,7 +31,7 @@ def is_int4_default_compression(model_id):
     return compression_args
 
 
-def get_compressed_path(output_dir: str, base_precision, option: str):
+def get_compressed_path(output_dir: Path, base_precision, option: str):
     if option == "4BIT_DEFAULT":
         model_id = output_dir.parents[3].name
         option = is_int4_default_compression(model_id)
