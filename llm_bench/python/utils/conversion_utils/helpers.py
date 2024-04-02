@@ -12,7 +12,7 @@ import numpy as np
 from nncf import compress_weights
 from nncf import Dataset
 from openvino import save_model
-from ..nncf_utils import COMPRESSION_OPTIONS, INT4_MODEL_CONFIGURATION
+from ..nncf_utils import COMPRESSION_OPTIONS, INT4_MODEL_CONFIGURATION, is_int4_default_compression
 from optimum.intel.openvino.configuration import _check_default_4bit_configs
 import warnings
 
@@ -42,13 +42,6 @@ def is_fp16(args):
 
 def is_int8_compression(compress_weights_mode):
     return compress_weights_mode in ["INT8", "INT8_ASYM", "INT8_SYM"]
-
-def is_int4_default_compression(model_id):
-    if model_id in INT4_MODEL_CONFIGURATION:
-        compression_args = INT4_MODEL_CONFIGURATION[model_id]
-    else:
-        compression_args = COMPRESSION_OPTIONS["INT4_SYM"]
-    return compression_args
 
 
 def is_ov_model_provided(model_id, model_dir, precision, model_name="openvino_model.xml"):
