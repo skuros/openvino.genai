@@ -1,5 +1,5 @@
 from pathlib import Path
-from conversion_utils.helpers import is_int4_default_compression
+from ..conversion_utils.helpers import is_int4_default_compression
 
 import nncf
 
