@@ -33,9 +33,10 @@ def is_int4_default_compression(model_id):
 
 def get_compressed_path(output_dir: Path, base_precision, option: str):
     if option == "4BIT_DEFAULT":
-        model_id = output_dir.parents[3].name
+        out_d = Path(output_dir)
+        model_id = out_d.parents[3].name
         option = is_int4_default_compression(model_id)
-    return Path(output_dir) / "pytorch/dldt/compressed_weights" / f"OV_{base_precision}-{option}"
+    return out_d / "pytorch/dldt/compressed_weights" / f"OV_{base_precision}-{option}"
 
 
 INT4_MODEL_CONFIGURATION = {
