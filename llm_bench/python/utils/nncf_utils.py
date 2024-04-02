@@ -1,5 +1,4 @@
 from pathlib import Path
-from .conversion_utils.helpers import is_int4_default_compression
 
 import nncf
 
@@ -22,6 +21,14 @@ if "INT8_ASYM" in nncf.CompressWeightsMode.__members__:
 
 if "INT8_SYM" in nncf.CompressWeightsMode.__members__:
     COMPRESSION_OPTIONS["INT8_SYM"] = {"mode": nncf.CompressWeightsMode.INT8_SYM}
+
+
+def is_int4_default_compression(model_id):
+    if model_id in INT4_MODEL_CONFIGURATION:
+        compression_args = INT4_MODEL_CONFIGURATION[model_id]
+    else:
+        compression_args = COMPRESSION_OPTIONS["INT4_SYM"]
+    return compression_args
 
 
 def get_compressed_path(output_dir: str, base_precision, option: str):
