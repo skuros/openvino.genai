@@ -1,4 +1,5 @@
 from pathlib import Path
+from conversion_utils.helpers import is_int4_default_compression
 
 import nncf
 
@@ -24,6 +25,9 @@ if "INT8_SYM" in nncf.CompressWeightsMode.__members__:
 
 
 def get_compressed_path(output_dir: str, base_precision, option: str):
+    if option == "4BIT_DEFAULT":
+        model_id = output_dir.parents[3].name
+        option = is_int4_default_compression(model_id)
     return Path(output_dir) / "pytorch/dldt/compressed_weights" / f"OV_{base_precision}-{option}"
 
 
