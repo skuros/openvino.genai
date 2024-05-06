@@ -1213,9 +1213,9 @@ def convert_falcon(args):
 
 
 def convert_phi(args):
-    trust_remote_code = False
+    trust_remote_code = True
     try:
-        config = AutoConfig.from_pretrained(args.model_id)
+        config = AutoConfig.from_pretrained(args.model_id,trust_remote_code=True)
     except Exception:
         config = AutoConfig.from_pretrained(args.model_id, trust_remote_code=True)
         trust_remote_code = True
