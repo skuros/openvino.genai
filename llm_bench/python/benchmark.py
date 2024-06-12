@@ -81,11 +81,13 @@ def run_text_generation(input_text, num, model, tokenizer, args, iter_data_list,
             utils.output_file.output_input_text(in_text, args, model_precision, prompt_index, bs_index, proc_id)
     tok_encode_start = time.perf_counter()
     input_data = tokenizer(input_text_list, return_tensors='pt')
+    log.info(f"INPUT DATA KEY: {input_data.key()} INPUT DATA SHAPE: {input_data.shape}")
     tok_encode_end = time.perf_counter()
     tok_encode_time = (tok_encode_end - tok_encode_start) * 1000
     input_data.pop('token_type_ids', None)
     # Remove `token_type_ids` from inputs
     input_tokens = input_data['input_ids'] if 'input_ids' in input_data else input_data
+    log.info(f"MAX INPUT TOKENS: {max(input_tokens)}")
     input_token_size = input_tokens[0].numel()
     if args['batch_size'] > 1:
         out_str = '[warm-up]' if num == 0 else '[{}]'.format(num)
