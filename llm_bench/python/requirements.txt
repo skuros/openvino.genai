@@ -19,5 +19,5 @@ tiktoken
 einops
 transformers_stream_generator
 bitsandbytes
-deepspeed
 onnx<=1.16.1
+deepspeed
