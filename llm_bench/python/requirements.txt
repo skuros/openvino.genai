@@ -21,3 +21,4 @@ einops
 transformers_stream_generator
 bitsandbytes
 deepspeed
+onnxruntime<=1.16.1
