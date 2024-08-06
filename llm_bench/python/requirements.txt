@@ -16,7 +16,6 @@ packaging
 psutil
 timm
 tiktoken
-onnx
 einops
 transformers_stream_generator
 bitsandbytes
