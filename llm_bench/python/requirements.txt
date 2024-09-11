@@ -6,7 +6,7 @@ openvino-tokenizers
 openvino_genai
 auto-gptq>=0.5.1 # for gptq
 pillow
-torch
+torch==2.4.1
 transformers>=4.40.0
 diffusers>=0.22.0
 #optimum is in dependency list of optimum-intel 
@@ -20,4 +20,3 @@ onnx<=1.16.1
 einops
 transformers_stream_generator
 bitsandbytes
-deepspeed
