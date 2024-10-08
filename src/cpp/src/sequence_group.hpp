@@ -21,16 +21,19 @@ enum class SequenceStatus {
 };
 
 using TokenIds = std::vector<int64_t>;
+using LogProbs = std::vector<float>;
 class SequenceGroup;
 
 class Sequence {
     // This can be a problem if we launch two pipelines in the same application.
     static uint64_t _get_next_global_sequence_id() {
+        const std::lock_guard<std::mutex> lock(m_counter_mutex);
         static uint64_t m_counter = 0;
         return m_counter++;
     }
 
     TokenIds m_generated_ids;
+    LogProbs m_generated_log_probs;
     uint64_t m_grouped_id;
     uint64_t m_id = _get_next_global_sequence_id();
     SequenceStatus m_status = SequenceStatus::RUNNING;
@@ -38,6 +41,7 @@ class Sequence {
     float m_cumulative_log_prob = 0.0f;
     std::vector<int64_t> m_prefix_hashes;
     std::weak_ptr<SequenceGroup> m_sequence_group;
+    static std::mutex m_counter_mutex;
 
     size_t _make_hash(size_t content_length);
 public:
@@ -107,14 +111,27 @@ public:
     // appends new tokens to a generated part
     void append_token(int64_t token_id, float log_prob) {
         m_cumulative_log_prob += log_prob;
-        m_generated_ids.push_back(token_id);     
+        m_generated_log_probs.push_back(log_prob);
+        m_generated_ids.push_back(token_id);
+    }
+
+    // removes n last tokens and updates cumulative log prob
+    // used to remove stop_string from the output
+    void remove_last_tokens(int n) {
+        OPENVINO_ASSERT(m_generated_ids.size() >= n, "Cannot remove more tokens than has been generated");
+        for (int i = 0; i < n; i++) {
+            m_cumulative_log_prob -= m_generated_log_probs.back();
+            m_generated_log_probs.pop_back();
+            m_generated_ids.pop_back();
+        }
     }
 
     GenerationOutput get_last_generation_output() {
         GenerationOutput output;
         OPENVINO_ASSERT(m_generated_ids.size());
         output.score = get_cumulative_log_probs();
-        output.generated_token_ids = std::vector<int64_t> {m_generated_ids.back()};
+        output.generated_ids = std::vector<int64_t> {m_generated_ids.back()};
+        output.generated_log_probs = std::vector<float> {m_generated_log_probs.back()};
         output.finish_reason = get_finish_reason();
         return output;
     }
@@ -127,6 +144,10 @@ public:
         return m_generated_ids;
     }
 
+    const LogProbs & get_generated_log_probs() const {
+        return m_generated_log_probs;
+    }
+
     float get_cumulative_log_probs() const {
         return m_cumulative_log_prob;
     }
@@ -137,6 +158,9 @@ public:
         return score;
     }
 
+
+
+    // Each KV block can be uniquely identified by
     void set_sequence_group_ptr(std::shared_ptr<SequenceGroup> sequence_group) {
         m_sequence_group = sequence_group;
     }
@@ -146,7 +170,7 @@ public:
         return m_sequence_group.lock();
     }
 
-    // Each KV block can be uniquely identified by 
+    // Each KV block can be uniquely identified by
     // the tokens within the block and the tokens in the prefix before the block.
     // hash(prefix tokens + block tokens) <--> KV Block
     size_t get_hash(size_t content_length = 0);
@@ -164,6 +188,7 @@ class SequenceGroup {
     TokenIds m_prompt_ids;
     GenerationStream::Ptr m_generation_stream;
     bool m_enable_prefix_caching;
+    size_t m_num_evicted_tokens = 0;
 
     uint64_t m_next_sequence_id = 0;
  
@@ -175,6 +200,7 @@ class SequenceGroup {
     // context length of longest sequence within a group
     size_t m_max_content_len = 0;
 
+
     SequenceGroup(uint64_t request_id, const ov::genai::GenerationConfig& sampling_params, std::size_t block_size, bool enable_prefix_caching)
         : m_request_id(request_id),
           m_sampling_params(sampling_params),
@@ -182,6 +208,7 @@ class SequenceGroup {
           m_enable_prefix_caching(enable_prefix_caching) {
             m_generation_stream = GenerationStream::create();    
            }
+
 public:
     using Ptr = std::shared_ptr<SequenceGroup>;
     using CPtr = std::shared_ptr<const SequenceGroup>;
@@ -208,27 +235,6 @@ public:
         });
         OPENVINO_ASSERT(remove_it != m_sequences.end(), "Failed to remove sequence with specified ID");
         m_sequences.erase(remove_it);
-    }
-
-    std::vector<int64_t> try_finish_generation() {
-        std::vector<int64_t> dropped_seq_ids;
-        for (auto& running_sequence : get_running_sequences()) {
-            const auto generated_len = running_sequence->get_generated_len();
-            if (m_sampling_params.max_new_tokens == generated_len ||
-                running_sequence->get_generated_ids().back() == m_sampling_params.eos_token_id && !m_sampling_params.ignore_eos) {
-                // stop sequence by max_new_tokens or EOS token
-                running_sequence->set_status(SequenceStatus::FINISHED);
-
-                if (running_sequence->get_generated_ids().back() == m_sampling_params.eos_token_id && !m_sampling_params.ignore_eos) {
-                    running_sequence->set_finish_reason(GenerationFinishReason::STOP);
-                } else if (m_sampling_params.max_new_tokens == generated_len) {
-                    running_sequence->set_finish_reason(GenerationFinishReason::LENGTH);
-                }
-                
-                dropped_seq_ids.push_back(running_sequence->get_id());
-            }
-        }
-        return dropped_seq_ids;
     }
 
     size_t get_prompt_len() const {
@@ -274,6 +280,27 @@ public:
 
     const std::vector<Sequence::Ptr>& get_sequences() const {
         return m_sequences;
+    }
+
+    /**
+     * @param seq_id Sequence identifier
+     * @return Whether this group has the sequence with this ID.
+     */
+    bool has_sequence_with_id(size_t seq_id) const {
+        auto it = std::find_if(m_sequences.begin(), m_sequences.end(), [seq_id](const Sequence::Ptr& val) {return val->get_id() == seq_id;});
+        return it != m_sequences.end();
+    }
+
+
+    /**
+     * @param seq_id Sequence identifier
+     * @return Pointer to the sequence with this ID.
+     * @throw ov::Exception if the sequence with ID seq_id is not in this SequenceGroup
+     */
+    Sequence::Ptr get_sequence_by_id(size_t seq_id) const {
+        auto it = std::find_if(m_sequences.begin(), m_sequences.end(), [seq_id](const Sequence::Ptr& val) {return val->get_id() == seq_id;});
+        OPENVINO_ASSERT(it != m_sequences.end(), "sequence with id ", seq_id, " not found in sequence group with request id ", m_request_id);
+        return *it;
     }
 
     std::vector<Sequence::CPtr> get_finished_sequences() const {
@@ -337,6 +364,33 @@ public:
         return m_num_processed_tokens;
     }
 
+    /**
+     * Registers within the sequence group that a given amount of tokens
+     * has been evicted from the underlying KV cache.
+     * NB: no per-layer or per-sequence indexing is required since current invariant is that
+     * there is always the same amount of KV cache blocks for each layer (i.e. eviction algo
+     * always evicts the same amount of blocks for each layer in each eviction step) and for each sequence in a group
+     * @param num_evicted_tokens Number of tokens evicted for this sequence at this generation step.
+     */
+    void register_token_eviction(size_t num_evicted_tokens) {
+        m_num_evicted_tokens += num_evicted_tokens;
+    }
+
+
+    /**
+     * Resets the eviction tracking on this sequence to the state prior to any eviction taking place.
+     */
+    void reset_eviction_token_count() {
+        m_num_evicted_tokens = 0;
+    }
+
+    /**
+     * @return Number of tokens evicted for this sequence since the start of the processing for this sequence
+     */
+    size_t get_num_evicted_tokens() const {
+        return m_num_evicted_tokens;
+    }
+
     void preempt_tokens(size_t num_preempt_tokens) {
         OPENVINO_ASSERT(num_preempt_tokens <= m_num_processed_tokens);
         m_num_processed_tokens -= num_preempt_tokens;
@@ -347,6 +401,7 @@ public:
         OPENVINO_ASSERT(!has_finished());
         return get_num_processed_tokens() + get_num_scheduled_tokens();
     }
+
 
     bool requires_sampling() const {
         return get_context_len() >= get_prompt_len() && get_context_len() > m_max_content_len;
@@ -397,9 +452,13 @@ public:
         return m_prompt_ids;
     }
 
+    /**
+     * @return The number of logical KV cache blocks required to host all the tokens in this sequence group, taking into account previous token evictions.
+     */
     size_t get_num_logical_blocks() const {
-        return (get_context_len() + m_block_size - 1) / m_block_size;
+        return (get_context_len() - get_num_evicted_tokens() + m_block_size - 1) / m_block_size;
     }
+
 
     // requires number of physical blocks for next generation
     size_t get_num_blocks() const {
@@ -460,7 +519,7 @@ public:
             sequence->set_sequence_group_ptr(sequence_group);
         }
     }
-    
+
     GenerationStream::Ptr get_generation_stream() {
         return m_generation_stream;
     }
@@ -481,7 +540,8 @@ public:
         GenerationOutputs outputs;
         for (auto& sequence: m_sequences) {
             GenerationOutput output;
-            output.generated_token_ids = sequence->get_generated_ids();
+            output.generated_ids = sequence->get_generated_ids();
+            output.generated_log_probs = sequence->get_generated_log_probs();
             output.score = m_sampling_params.is_beam_search() ? sequence->get_beam_search_score(m_sampling_params) : sequence->get_cumulative_log_probs();
             output.finish_reason = sequence->get_finish_reason();
             outputs.emplace(sequence->get_grouped_id(), output);
@@ -512,8 +572,9 @@ public:
                 push_outputs();
             }
         } else if (m_sampling_params.is_greedy_decoding() || m_sampling_params.is_multinomial()) {
-            // TO DO: Now we always stream for greedy search for the sake of benchmarking 
-            if (num_total_seqs() == 1) {
+            // We can stream only when one sequence is returned and we don't use stop strings that would be excluded from the output
+            // (after stop string is detected its tokens are already sent)
+            if (num_total_seqs() == 1&& (m_sampling_params.stop_strings.empty() || m_sampling_params.include_stop_str_in_output)) {
                 push_partial_outputs();
             } else if (has_finished() || out_of_memory()) {
                 push_outputs();

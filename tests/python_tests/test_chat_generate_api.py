@@ -42,9 +42,8 @@ def test_chat_compare_with_HF(model_descr, generation_config: Dict):
     chat_history_ov = []
     chat_prompt = ''
     
-    # HF in chat scenario does not add special tokens, but openvino tokenizer by default is converted with add_special_tokens=True.
-    # Need to regenerate openvino_tokenizer/detokenizer.
-    model_id, path, tokenizer, model_opt, pipe = read_model((model_descr[0], model_descr[1] / '_test_chat'), add_special_tokens=False)
+    # Will set add_special_tokens=False inside pipeline when start_chat() is called.
+    model_id, path, tokenizer, model_opt, pipe = read_model((model_descr[0], model_descr[1] / '_test_chat'))
 
     pipe.start_chat()    
     for prompt in quenstions:
@@ -143,7 +142,7 @@ conversation = [
     {'role': 'user', 'content': '1+1='},
     {'role': 'assistant', 'content': '1 + 1 = 2'},
     {'role': 'user', 'content': 'What is the previous answer?'},
-    {'role': 'assistant', 'content': 'The previous answer was: 1 + 1 = 2. \n Please ask me your next question.'},
+    {'role': 'assistant', 'content': 'The previous answer was: 1 + 1 = 2. Please ask me your next question.'},
     {'role': 'user', 'content': 'Why is the sun yellow?'},
     {'role': 'assistant', 'content': 'Because it emits yeloow light.'},
     {'role': 'user', 'content': 'What was my first question?'},
@@ -159,7 +158,7 @@ def test_apply_chat_template(model_tmp_path, chat_config: Tuple[str, Dict]):
     model_id, path, tokenizer, opt_model, pipe = read_model(get_models_list()[0])
     
     full_history_str_hf = tokenizer.apply_chat_template(conversation, 
-        add_generation_prompt=False, 
+        add_generation_prompt=False,
         tokenize=False,
         **tokenizer_config)
     
@@ -197,3 +196,29 @@ def test_set_chat_template():
     pipe.finish_chat()
     reference = pipe.generate("a", max_new_tokens=1)
     assert generated == reference
+
+prompts = [
+    '1+1=',
+    'What is the previous answer?',
+    'Why is the Sun yellow?',
+    'What was my first question?',
+    ['Why is the Sun yellow?'],
+    "若我有一亿美元，在人工智能盛行的今天，我怎样投资才能收益最大化？",
+    "מחרוזת בדיקה",
+    "Multiline\nstring!\nWow!",
+]
+
+@pytest.mark.precommit
+@pytest.mark.nightly
+@pytest.mark.parametrize("add_special_tokens", [True, False])
+@pytest.mark.parametrize("prompt", prompts)
+def test_add_special_tokens(add_special_tokens, prompt):
+    import numpy as np
+    model_descr = get_chat_models_list()[0]
+    model_id, path, hf_tokenizer, model_opt, pipe = read_model((model_descr[0], model_descr[1] / '_test_chat'))
+    genai_tokenzier = pipe.get_tokenizer()
+    
+    # Calling encode with add_special_tokens will set state flag.
+    res_genai = genai_tokenzier.encode(prompt, add_special_tokens).input_ids.data
+    res_hf = hf_tokenizer(prompt, return_tensors="np", add_special_tokens=add_special_tokens)["input_ids"]
+    assert np.all(res_genai == res_hf)
