@@ -1350,8 +1350,8 @@ def convert_aquilachat(args):
 
 def convert_visual_text(args):
     model = AutoModel.from_pretrained(args.model_id, trust_remote_code=True)
-    vision_model_path = get_fp_path(args, "vision/oprnvino_model.xml")
-    text_model_path = get_fp_path(args, "text/oprnvino_model.xml")
+    vision_model_path = Path(args.output_dir) / PYTORCH_DIR / OV_DIR / args.precision / "vision_openvino_model.xml"
+    text_model_path = Path(args.output_dir) / PYTORCH_DIR / OV_DIR / args.precision / "text_openvino_model.xml"
 
     def get_dummy_visual_input():
         if not Path("data/furseal.png").exists():
