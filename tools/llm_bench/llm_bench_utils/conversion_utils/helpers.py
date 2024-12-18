@@ -85,8 +85,7 @@ def get_fp_path(args, model_subpath):
     model_dirs.append(Path(model_dir) / OV_DIR / args.precision)
     model_dirs.append(Path(model_dir) / PYTORCH_DIR / OV_DIR / args.precision)
     for md in model_dirs:
-        if (md / model_subpath).exists():
-            return md / model_subpath
+        return md / model_subpath
     return None
 
 
