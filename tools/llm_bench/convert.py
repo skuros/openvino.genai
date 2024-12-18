@@ -1401,11 +1401,11 @@ def convert_visual_text(args):
 
     if not text_model_path.exists():
         ov_text_model = convert_model(model.text_model, example_input=text_inputs["input_ids"])
-        ov.save_model(ov_text_model, text_model_path)
+        save_model(ov_text_model, text_model_path)
 
     if not vision_model_path.exists():
         ov_vision_model = convert_model(model.vision_model, example_input=vision_inputs["pixel_values"])
-        ov.save_model(ov_vision_model, vision_model_path)
+        save_model(ov_vision_model, vision_model_path)
 
 
 converters = {
