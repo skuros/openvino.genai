@@ -331,19 +331,9 @@ def download_file(
     # download the file if it does not exist
     filesize = int(response.headers.get("Content-length", 0))
     if not filepath.exists():
-        with tqdm_notebook(
-            total=filesize,
-            unit="B",
-            unit_scale=True,
-            unit_divisor=1024,
-            desc=str(filename),
-            disable=not show_progress,
-        ) as progress_bar:
-            with open(filepath, "wb") as file_object:
-                for chunk in response.iter_content(chunk_size):
-                    file_object.write(chunk)
-                    progress_bar.update(len(chunk))
-                    progress_bar.refresh()
+        with open(filepath, "wb") as file_object:
+            for chunk in response.iter_content(chunk_size):
+                file_object.write(chunk)
     else:
         print(f"'{filepath}' already exists.")
 
