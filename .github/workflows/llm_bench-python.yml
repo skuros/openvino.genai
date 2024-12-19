@@ -108,8 +108,8 @@ jobs:
           GIT_LFS_SKIP_SMUDGE: 0
       - name: Test tiny-random-baichuan2 on Linux Optimum Intel
         run: |
-          optimum-cli export openvino --model katuni4ka/tiny-random-baichuan2 --trust-remote-code --weight-format fp16 ./ov_models/tiny-random-baichuan2/pytorch/dldt/FP16
-          python ./tools/llm_bench/benchmark.py -m ./ov_models/tiny-random-baichuan2/pytorch/dldt/FP16/ -d cpu -n 1 --optimum -ic 10
+          optimum-cli export openvino --model katuni4ka/tiny-random-baichuan2 --trust-remote-code --weight-format fp16 ./ov_models/tiny-random-baichuan2/pytorch/ov/FP16
+          python ./tools/llm_bench/benchmark.py -m ./ov_models/tiny-random-baichuan2/pytorch/ov/FP16/ -d cpu -n 1 --optimum -ic 10
           rm -rf ./ov_models/tiny-random-baichuan2
       - name: Test OpenVINO/LCM_Dreamshaper_v7-int8-ov on Linux Optimum Intel
         run: |
@@ -185,7 +185,7 @@ jobs:
           python -m pip install ${{ env.SRC_DIR }} -v ${{ needs.openvino_download.outputs.ov_wheel_source }}
           GIT_CLONE_PROTECTION_ACTIVE=false python -m pip install -r ${{ env.LLM_BENCH_PYPATH }}/requirements.txt ${{ needs.openvino_download.outputs.ov_wheel_source }}
           python ${{ env.LLM_BENCH_PYPATH }}/convert.py --model_id TinyLlama/TinyLlama-1.1B-Chat-v1.0 --output_dir ${{ env.SRC_DIR }} --stateful
-          grep beam_idx ${{ env.SRC_DIR }}/pytorch/dldt/FP32/openvino_model.xml
+          grep beam_idx ${{ env.SRC_DIR }}/pytorch/ov/FP32/openvino_model.xml
         working-directory: ${{ env.OV_INSTALL_DIR }}
       - name: WWB Tests
         run: |

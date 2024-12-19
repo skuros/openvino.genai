@@ -9,7 +9,8 @@ import logging as log
 from argparse import ArgumentParser
 from functools import wraps
 from pathlib import Path
-from typing import Tuple, Union, Dict, Optional, TYPE_CHECKING
+from typing import Tuple, Union, List, Dict, Optional, TYPE_CHECKING
+from PIL import Image
 import nncf
 import torch
 from diffusers import (
@@ -74,6 +75,7 @@ from llm_bench_utils.conversion_utils.helpers import (
     is_ov_model_provided,
     is_int8_compression,
     BackendType,
+    download_file,
 )
 from llm_bench_utils.nncf_utils import COMPRESSION_OPTIONS
 
@@ -1346,6 +1348,66 @@ def convert_aquilachat(args):
         unpatch_gptq(cuda, post_init)
 
 
+def convert_visual_text(args):
+    model = AutoModel.from_pretrained(args.model_id, trust_remote_code=True)
+    vision_model_path = Path(args.output_dir) / PYTORCH_DIR / OV_DIR / args.precision / "vision_openvino_model.xml"
+    text_model_path = Path(args.output_dir) / PYTORCH_DIR / OV_DIR / args.precision / "text_openvino_model.xml"
+
+    def get_dummy_visual_input():
+        if not Path("data/furseal.png").exists():
+            download_file(
+                "https://github.com/openvinotoolkit/openvino_notebooks/assets/29454499/3f779fc1-c1b2-4dec-915a-64dae510a2bb",
+                "furseal.png",
+                directory="data",
+            )
+
+        img_furseal = Image.open("./data/furseal.png")
+
+        if not Path("data/coco.jpg").exists():
+            image_path = download_file(
+                "https://github.com/user-attachments/assets/1c66a05d-7442-45c2-a34c-bb08b95af7a6",
+                "coco.jpg",
+                directory="data",
+            )
+
+        img_coco = Image.open("./data/coco.jpg")
+
+        processor = model.get_preprocess()
+        vision_inputs = processor(images=[img_furseal, img_coco], return_tensors="pt")
+
+        return vision_inputs
+
+    def get_dummy_text_input():
+        tokenizer = model.get_tokenizer()
+        tokenizer_kwargs = {}
+        tokenizer_kwargs["padding"] = "max_length"
+        tokenizer_kwargs["max_length"] = 512
+        tokenizer_kwargs["truncation"] = True
+
+        text_inputs = tokenizer(
+            ["Seal", "Cobra", "Rat", "Penguin", "Dog"],
+            return_tensors="pt",
+            **tokenizer_kwargs,
+        ).to("cpu")
+
+        return text_inputs
+
+    vision_inputs = get_dummy_visual_input()
+    text_inputs = get_dummy_text_input()
+
+    # PyTorch model
+    image_embeddings = model.vision_model(vision_inputs["pixel_values"])
+    text_embeddings = model.text_model(text_inputs["input_ids"])
+
+    if not text_model_path.exists():
+        ov_text_model = convert_model(model.text_model, example_input=text_inputs["input_ids"])
+        save_model(ov_text_model, text_model_path)
+
+    if not vision_model_path.exists():
+        ov_vision_model = convert_model(model.vision_model, example_input=vision_inputs["pixel_values"])
+        save_model(ov_vision_model, vision_model_path)
+
+
 converters = {
     "decoder": convert_causal_lm,
     "blenderbot": convert_seq2seq,
@@ -1371,6 +1433,7 @@ converters = {
     "qwen": convert_qwen,
     "codegen2": convert_codegen2,
     "aquilachat": convert_aquilachat,
+    "jina-clip": convert_visual_text,
 }
 
 
