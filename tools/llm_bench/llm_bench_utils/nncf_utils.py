@@ -34,4 +34,4 @@ if "INT8_SYM" in nncf.CompressWeightsMode.__members__:
 
 
 def get_compressed_path(output_dir: str, base_precision, option: str):
-    return Path(output_dir) / "pytorch/dldt/compressed_weights" / f"OV_{base_precision}-{option}"
+    return Path(output_dir) / "pytorch/ov/compressed_weights" / f"OV_{base_precision}-{option}"
