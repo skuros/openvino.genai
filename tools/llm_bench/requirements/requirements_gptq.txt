@@ -1,2 +1,2 @@
 auto-gptq>=0.5.1 # for gptq
-gptqmodel
+GPTQModel<=5.6.0
