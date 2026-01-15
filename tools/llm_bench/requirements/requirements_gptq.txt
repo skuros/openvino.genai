@@ -1,2 +1,2 @@
 auto-gptq>=0.5.1 # for gptq
-git+https://github.com/skuros/GPTQModel.git@sk/streams-patch#egg=gptqmodel
+gptqmodel
