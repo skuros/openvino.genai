@@ -95,6 +95,27 @@ def get_lora_config(lora_paths, lora_alphas, lora_mode=None):
     return adapter_config
 
 
+def load_tokenizer_with_fallback(model_path, fallback_subfolders=("tokenizer", "tokenizer_2", None)):
+    model_path = Path(model_path)
+    load_errors = []
+    for subfolder in fallback_subfolders:
+        for trust_remote_code in (False, True):
+            tokenizer_kwargs = {"subfolder": subfolder} if subfolder else {}
+            if trust_remote_code:
+                tokenizer_kwargs["trust_remote_code"] = True
+            try:
+                return AutoTokenizer.from_pretrained(str(model_path), **tokenizer_kwargs)
+            except Exception as exc:
+                source_name = subfolder if subfolder is not None else "root"
+                load_errors.append(f"{source_name} (trust_remote_code={trust_remote_code}): {exc}")
+
+    fallback_order = [subfolder if subfolder is not None else "root" for subfolder in fallback_subfolders]
+    raise RuntimeError(
+        f"Failed to load tokenizer from {model_path}. Attempted subfolders in order: {fallback_order}. "
+        f"Errors: {' | '.join(load_errors)}"
+    )
+
+
 def create_text_gen_model(model_path, device, memory_data_collector, **kwargs):
     """Create text generation model.
 
@@ -493,7 +514,7 @@ def create_genai_image_gen_model(model_path, device, ov_config, model_index_data
     main_model_name = "unet" if "unet" in model_index_data else "transformer"
     callback = PerfCollector(main_model_name)
 
-    orig_tokenizer = AutoTokenizer.from_pretrained(model_path, subfolder="tokenizer")
+    orig_tokenizer = load_tokenizer_with_fallback(model_path)
     callback.orig_tokenizer = orig_tokenizer
 
     if kwargs.get("mem_consumption"):
@@ -1298,7 +1319,7 @@ def create_text_reranker_model(model_path: Path, device: str, memory_monitor, **
 def create_genai_video_gen_model(model_path, device, ov_config, memory_data_collector, **kwargs):
     import openvino_genai
 
-    orig_tokenizer = AutoTokenizer.from_pretrained(model_path, subfolder="tokenizer")
+    orig_tokenizer = load_tokenizer_with_fallback(model_path)
 
     if kwargs.get("mem_consumption"):
         memory_data_collector.start()
@@ -1340,7 +1361,12 @@ def create_video_gen_model(model_path, device, memory_data_collector, **kwargs):
                 raise RuntimeError("OpenVINO GenAI based benchmarking is required, but not available.")
 
             log.info("Selected OpenVINO GenAI for benchmarking")
-            return create_genai_video_gen_model(model_path, device, ov_config, memory_data_collector, **kwargs)
+            try:
+                return create_genai_video_gen_model(model_path, device, ov_config, memory_data_collector, **kwargs)
+            except Exception as exp:
+                raise RuntimeError(
+                    f"Model is not supported by OpenVINO GenAI. GenAI video pipeline loading failed with following error: {exp}"
+                ) from exp
 
         if kwargs.get("mem_consumption"):
             memory_data_collector.start()

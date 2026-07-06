@@ -240,7 +240,26 @@ class TextToVideoGenAI(CommonPipeline):
         return self.model.generate(input_data, **kwargs)
 
     def get_input_tokens_num(self, prompt: str):
-        return self.tokenizer(prompt, return_tensors="pt").input_ids.numel()
+        if self.tokenizer is not None:
+            try:
+                tokenized = self.tokenizer(prompt, return_tensors="pt")
+                input_ids = tokenized.input_ids if hasattr(tokenized, "input_ids") else tokenized["input_ids"]
+                return input_ids.numel()
+            except Exception as exc:
+                log.warning(
+                    "HF tokenizer token counting failed and fallback to GenAI tokenizer will be used. Error: %s",
+                    exc,
+                )
+
+        if hasattr(self.model, "get_tokenizer"):
+            try:
+                input_data = self.model.get_tokenizer().encode([prompt])
+                return input_data.input_ids.get_shape()[1]
+            except Exception as exc:
+                log.warning("GenAI tokenizer token counting failed. Input token size will be 0. Error: %s", exc)
+
+        log.warning("Tokenizer is unavailable. Input token size will be 0.")
+        return 0
 
     def print_batch_size_info(self, iter_num: int, input_args: dict):
         iter_prefix = "[warm-up]" if iter_num == 0 else "[{}]".format(iter_num)
